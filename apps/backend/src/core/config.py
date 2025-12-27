@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     session_remember_me_days: int = 7
     session_default_hours: int = 24
     
+    frontend_base_url: str = "http://localhost:3000"
+    
     model_config = SettingsConfigDict(
         env_file=".env.local",
         env_file_encoding="utf-8",

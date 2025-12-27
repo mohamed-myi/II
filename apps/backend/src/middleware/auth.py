@@ -13,17 +13,9 @@ from src.middleware.context import RequestContext, get_request_context
 async def get_current_session(
     request: Request,
     ctx: RequestContext = Depends(get_request_context),
-    db: AsyncSession = Depends(lambda: None),  # Placeholder - will be replaced with actual dependency
+    db: AsyncSession = Depends(lambda: None),  # todo: replace with actual dependency at route level
 ) -> "Session":
-    """
-    Validates session cookie.
-    
-    Fingerprint Logic:
-    - Missing fingerprint at login: Handled by require_fingerprint (returns 400)
-    - Changed fingerprint mid-session: ALLOW but flag for notification
-    
-    Raises HTTPException(401) if session invalid/expired.
-    """
+    """Rejects if session invalid; expired; or fingerprint mismatch"""
     from src.models.identity import Session
     
     session_id_str = request.cookies.get(SESSION_COOKIE_NAME)
@@ -40,34 +32,27 @@ async def get_current_session(
     if session is None:
         raise HTTPException(status_code=401, detail="Session expired or invalid")
     
-    # Compare fingerprints, should reject (to be changed)
+    # Hard enforcement; reject on fingerprint mismatch to prevent session hijacking
     if ctx.fingerprint_hash and ctx.fingerprint_hash != session.fingerprint:
-        # Flag for downstream notification - email notis not setup yet.
-        request.state.fingerprint_changed = True
-        request.state.old_fingerprint = session.fingerprint
-        request.state.new_fingerprint = ctx.fingerprint_hash
-    else:
-        request.state.fingerprint_changed = False
+        raise HTTPException(
+            status_code=401,
+            detail="Session invalid for this device"
+        )
+    
+    if session.fingerprint and not ctx.fingerprint_hash:
+        raise HTTPException(
+            status_code=401,
+            detail="Device identification required"
+        )
     
     return session
 
 
 async def get_current_user(
-    request: Request,
-    db: AsyncSession = Depends(lambda: None),  # Placeholder
+    session: "Session" = Depends(get_current_session),
+    db: AsyncSession = Depends(lambda: None),
 ) -> "User":
-    """
-    Returns the authenticated user from session.
-    
-    Must be used after get_current_session in the dependency chain.
-    """
     from src.models.identity import User
-
-    session = await get_current_session(
-        request,
-        await get_request_context(request),
-        db
-    )
     
     user = await db.get(User, session.user_id)
     if user is None:
@@ -77,27 +62,11 @@ async def get_current_user(
 
 async def require_auth(
     request: Request,
-    ctx: RequestContext = Depends(get_request_context),
-    db: AsyncSession = Depends(lambda: None),  # Placeholder
+    session: "Session" = Depends(get_current_session),
+    user: "User" = Depends(get_current_user),
+    db: AsyncSession = Depends(lambda: None),
 ) -> tuple["User", "Session"]:
-    """
-    Validates session and refreshes if needed.
-    Stores new expires_at in request.state for response middleware.
-    
-    Usage in routes:
-        @router.get("/protected")
-        async def protected_route(auth: tuple[User, Session] = Depends(require_auth)):
-            user, session = auth
-            ...
-    """
-    from src.models.identity import User
-    
-    session = await get_current_session(request, ctx, db)
-    
-    user = await db.get(User, session.user_id)
-    if user is None:
-        raise HTTPException(status_code=401, detail="User not found")
-
+    """Stores new expires_at in request state for response middleware"""
     new_expires = await refresh_session(db, session)
     if new_expires:
         request.state.session_expires_at = new_expires
@@ -109,15 +78,7 @@ async def require_auth(
 def require_fingerprint(
     ctx: RequestContext = Depends(get_request_context),
 ) -> str:
-    """
-    Dependency for login routes that REQUIRE fingerprint.
-    Raises 400 if missing.
-    
-    Usage:
-        @router.post("/auth/callback")
-        async def oauth_callback(fingerprint: str = Depends(require_fingerprint)):
-            ...
-    """
+    """Returns 400 if X_Device_Fingerprint header missing"""
     if not ctx.fingerprint_hash:
         raise HTTPException(
             status_code=400,
@@ -127,19 +88,15 @@ def require_fingerprint(
 
 
 async def session_cookie_sync_middleware(request: Request, call_next) -> Response:
-    """
-    Injects updated session cookie if refresh_session updated expires_at.
-    
-    Must be registered after CORS middleware in main.py - Middleware executes in reverse order for responses.
-    """
+    """Injects updated session cookie if refresh_session updated expires_at"""
     response = await call_next(request)
     
-    # Check if auth dependency flagged a refresh
-    if hasattr(request.state, "session_expires_at") and hasattr(request.state, "session_id"):
-        create_session_cookie(
-            response,
-            request.state.session_id,
-            request.state.session_expires_at
-        )
+    if response.status_code < 400:
+        if hasattr(request.state, "session_expires_at") and hasattr(request.state, "session_id"):
+            create_session_cookie(
+                response,
+                request.state.session_id,
+                request.state.session_expires_at
+            )
     
     return response

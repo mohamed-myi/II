@@ -12,11 +12,7 @@ def create_session_cookie(
     session_id: str,
     expires_at: datetime | None = None,
 ) -> None:
-    """
-    Sets session cookie with security flags.
-    If expires_at is None, creates a session cookie that expires when browser closes.
-    If expires_at is provided, creates a persistent cookie with Expires attribute.
-    """
+    """If expires_at is None; creates session cookie that expires when browser closes"""
     settings = get_settings()
     is_production = settings.environment == "production"
     
@@ -36,9 +32,6 @@ def create_session_cookie(
 
 
 def clear_session_cookie(response: Response) -> None:
-    """
-    Clears session cookie by setting it with past expiry.
-    """
     settings = get_settings()
     is_production = settings.environment == "production"
     

@@ -13,7 +13,6 @@ class OAuthProvider(str, Enum):
 
 @dataclass
 class UserProfile:
-    """Standardized user profile from OAuth provider."""
     email: str
     provider_id: str
     avatar_url: str | None
@@ -23,7 +22,7 @@ class UserProfile:
 
 @dataclass
 class OAuthToken:
-    """Token response with optional refresh token for background workers."""
+    """Includes optional refresh_token for background workers"""
     access_token: str
     token_type: str
     scope: str | None = None
@@ -32,27 +31,22 @@ class OAuthToken:
 
 
 class OAuthError(Exception):
-    """Base exception for OAuth errors."""
     pass
 
 
 class EmailNotVerifiedError(OAuthError):
-    """Email not verified by OAuth provider."""
     pass
 
 
 class NoEmailError(OAuthError):
-    """OAuth provider did not return email."""
     pass
 
 
 class OAuthStateError(OAuthError):
-    """Invalid or missing OAuth state parameter."""
     pass
 
 
 class InvalidCodeError(OAuthError):
-    """Authorization code is invalid, expired, or already used."""
     pass
 
 
@@ -74,10 +68,7 @@ STATE_ALLOWED_CHARS = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0
 
 
 def validate_state(state: str) -> None:
-    """
-    Validates the OAuth state parameter to prevent injection attacks.
-    State should be a cryptographically random string.
-    """
+    """Validates state parameter to prevent injection attacks"""
     if not state:
         raise OAuthStateError("State parameter is required")
     
@@ -92,10 +83,7 @@ def validate_state(state: str) -> None:
 
 
 def get_authorization_url(provider: OAuthProvider, redirect_uri: str, state: str) -> str:
-    """
-    Returns the OAuth authorization URL with properly encoded parameters.
-    State parameter is validated and should be stored server-side for CSRF verification.
-    """
+    """State is validated and should be stored server side for CSRF verification"""
     validate_state(state)
     settings = get_settings()
     
@@ -129,10 +117,7 @@ async def exchange_code_for_token(
     redirect_uri: str,
     client: httpx.AsyncClient,
 ) -> OAuthToken:
-    """
-    Exchanges authorization code for access token using shared client.
-    Only retries on 5xx errors or network failures, not 4xx.
-    """
+    """Retries on 5xx or network failures; fails fast on 4xx"""
     settings = get_settings()
     
     if provider == OAuthProvider.GITHUB:
@@ -174,7 +159,6 @@ async def exchange_code_for_token(
                     continue
                 raise last_error
             
-            # Parse response body
             try:
                 token_data = response.json() if response.content else {}
             except Exception:
@@ -191,7 +175,6 @@ async def exchange_code_for_token(
             if response.status_code >= 400:
                 raise OAuthError(f"Token exchange failed: HTTP {response.status_code}")
             
-            # Validate required field
             if "access_token" not in token_data:
                 raise OAuthError("Provider response missing access_token")
             
@@ -227,10 +210,7 @@ async def fetch_user_profile(
     token: OAuthToken,
     client: httpx.AsyncClient,
 ) -> UserProfile:
-    """
-    Fetches and validates user profile from OAuth provider.
-    Uses node_id for GitHub to match GraphQL schema.
-    """
+    """Uses node_id for GitHub to match GraphQL schema"""
     if provider == OAuthProvider.GITHUB:
         return await _fetch_github_profile(token.access_token, client)
     elif provider == OAuthProvider.GOOGLE:
@@ -240,10 +220,6 @@ async def fetch_user_profile(
 
 
 async def _fetch_github_profile(access_token: str, client: httpx.AsyncClient) -> UserProfile:
-    """
-    Fetches user profile from GitHub API.
-    Uses node_id (GraphQL ID).
-    """
     headers = {
         "Authorization": f"Bearer {access_token}",
         "Accept": "application/vnd.github+json",
@@ -282,9 +258,6 @@ async def _fetch_github_profile(access_token: str, client: httpx.AsyncClient) ->
 
 
 async def _fetch_google_profile(access_token: str, client: httpx.AsyncClient) -> UserProfile:
-    """
-    Fetches user profile from Google API.
-    """
     headers = {"Authorization": f"Bearer {access_token}"}
     
     response = await client.get(GOOGLE_USERINFO_URL, headers=headers)
@@ -309,9 +282,7 @@ async def _fetch_google_profile(access_token: str, client: httpx.AsyncClient) ->
 
 
 def get_http_client() -> httpx.AsyncClient:
-    """
-    Factory for creating a shared httpx client with connection pooling.
-    """
+    """todo: remove this; use dependency injection version instead"""
     return httpx.AsyncClient(
         timeout=httpx.Timeout(10.0),
         limits=httpx.Limits(max_keepalive_connections=5, max_connections=10),

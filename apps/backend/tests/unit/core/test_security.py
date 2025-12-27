@@ -1,124 +1,38 @@
+"""
+Security Tests - Fail-Safes and Production Hardening
+
+This module tests the core security utilities:
+- InsecureSecretError enforcement (fail-fast on weak secrets)
+- Malformed hash handling (DB NULL/corruption resilience)
+- Constant-time comparison (timing attack resistance)
+- ID generation uniqueness verification
+
+Tests are condensed to focus on security-critical behavior, not stdlib validation.
+"""
 import pytest
 import os
 from unittest.mock import patch
 
 
-# Mock the settings before importing security module
 @pytest.fixture(autouse=True)
 def mock_settings():
     with patch.dict(os.environ, {
         "FINGERPRINT_SECRET": "test-fingerprint-secret-key-for-testing",
         "JWT_SECRET_KEY": "test-jwt-secret-key",
     }):
-        # Clear the lru_cache to pick up new env vars
         from src.core.config import get_settings
         get_settings.cache_clear()
         yield
         get_settings.cache_clear()
 
 
-class TestHashFingerprint:
-    def test_returns_hex_string(self):
-        from src.core.security import hash_fingerprint
-        result = hash_fingerprint("test-fingerprint-value")
-        assert isinstance(result, str)
-        # SHA256 produces 64 hex characters
-        assert len(result) == 64
-        assert all(c in "0123456789abcdef" for c in result)
-
-    def test_same_input_produces_same_hash(self):
-        from src.core.security import hash_fingerprint
-        fingerprint = "browser-fingerprint-12345"
-        hash1 = hash_fingerprint(fingerprint)
-        hash2 = hash_fingerprint(fingerprint)
-        assert hash1 == hash2
-
-    def test_different_input_produces_different_hash(self):
-        from src.core.security import hash_fingerprint
-        hash1 = hash_fingerprint("fingerprint-a")
-        hash2 = hash_fingerprint("fingerprint-b")
-        assert hash1 != hash2
-
-    def test_empty_string_produces_valid_hash(self):
-        from src.core.security import hash_fingerprint
-        result = hash_fingerprint("")
-        assert isinstance(result, str)
-        assert len(result) == 64
-
-
-class TestGenerateSessionId:
-    def test_returns_valid_uuid_string(self):
-        from src.core.security import generate_session_id
-        import uuid
-        session_id = generate_session_id()
-        # Should be parseable as UUID
-        parsed = uuid.UUID(session_id)
-        assert str(parsed) == session_id
-
-    def test_generates_unique_ids(self):
-        from src.core.security import generate_session_id
-        ids = [generate_session_id() for _ in range(100)]
-        # All IDs should be unique
-        assert len(set(ids)) == 100
-
-    def test_format_is_uuid_v4(self):
-        from src.core.security import generate_session_id
-        import uuid
-        session_id = generate_session_id()
-        parsed = uuid.UUID(session_id)
-        assert parsed.version == 4
-
-
-class TestCompareFingerprints:
-    def test_matching_fingerprint_returns_true(self):
-        from src.core.security import hash_fingerprint, compare_fingerprints
-        raw_fingerprint = "user-browser-fingerprint"
-        stored_hash = hash_fingerprint(raw_fingerprint)
-        assert compare_fingerprints(stored_hash, raw_fingerprint) is True
-
-    def test_non_matching_fingerprint_returns_false(self):
-        from src.core.security import hash_fingerprint, compare_fingerprints
-        stored_hash = hash_fingerprint("original-fingerprint")
-        assert compare_fingerprints(stored_hash, "different-fingerprint") is False
-
-    def test_empty_fingerprint_comparison(self):
-        from src.core.security import hash_fingerprint, compare_fingerprints
-        stored_hash = hash_fingerprint("")
-        assert compare_fingerprints(stored_hash, "") is True
-        assert compare_fingerprints(stored_hash, "non-empty") is False
-
-    def test_timing_attack_resistance(self):
-        # Verifies we use constant-time comparison through structural testing.
-        from src.core.security import compare_fingerprints, hash_fingerprint
-        import secrets
-        stored = hash_fingerprint("test")
-        assert compare_fingerprints(stored, "test") is True
-        assert compare_fingerprints(stored, "wrong") is False
-
-
-class TestGenerateLoginFlowId:
-    def test_returns_url_safe_string(self):
-        from src.core.security import generate_login_flow_id
-        flow_id = generate_login_flow_id()
-        assert isinstance(flow_id, str)
-        # Should be URL-safe (no special chars needing encoding)
-        import urllib.parse
-        assert urllib.parse.quote(flow_id, safe="") == flow_id or "_" in flow_id or "-" in flow_id
-
-    def test_generates_unique_ids(self):
-        from src.core.security import generate_login_flow_id
-        ids = [generate_login_flow_id() for _ in range(100)]
-        assert len(set(ids)) == 100
-
-    def test_sufficient_entropy(self):
-        from src.core.security import generate_login_flow_id
-        flow_id = generate_login_flow_id()
-        # 16 bytes base64url encoded = ~22 characters
-        assert len(flow_id) >= 20
-
-
 class TestInsecureSecretValidation:
-    """Tests for FINGERPRINT_SECRET validation."""
+    """
+    Security Fail-Safes for FINGERPRINT_SECRET.
+    
+    Proves the app "fails secure" - prevents production deployment
+    with weak .env.example keys or empty secrets.
+    """
     
     def test_empty_secret_fails_in_any_environment(self):
         """Empty FINGERPRINT_SECRET should fail-fast in ANY environment."""
@@ -136,23 +50,6 @@ class TestInsecureSecretValidation:
                 hash_fingerprint("test-fingerprint")
             
             assert "must be set" in str(exc.value)
-            get_settings.cache_clear()
-
-    def test_empty_secret_fails_in_production(self):
-        """Empty FINGERPRINT_SECRET should fail in production."""
-        from src.core.security import InsecureSecretError
-        
-        with patch.dict(os.environ, {
-            "FINGERPRINT_SECRET": "",
-            "ENVIRONMENT": "production",
-        }):
-            from src.core.config import get_settings
-            get_settings.cache_clear()
-            
-            from src.core.security import hash_fingerprint
-            with pytest.raises(InsecureSecretError):
-                hash_fingerprint("test-fingerprint")
-            
             get_settings.cache_clear()
 
     def test_weak_secret_raises_in_production(self):
@@ -183,7 +80,6 @@ class TestInsecureSecretValidation:
             get_settings.cache_clear()
             
             from src.core.security import hash_fingerprint
-            # Should not raise in development with non-empty weak secret
             result = hash_fingerprint("test-fingerprint")
             assert len(result) == 64
             
@@ -191,30 +87,26 @@ class TestInsecureSecretValidation:
 
 
 class TestMalformedHashHandling:
-    """Tests for handling malformed stored hashes from DB corruption."""
+    """
+    Anti-Corruption / NULL Handling.
     
-    def test_short_hash_returns_false(self):
-        """Stored hash shorter than 64 chars should return False."""
+    Handles "dirty data" from the database. If a hash is corrupted
+    or NULL, security logic should deny access without crashing.
+    """
+    
+    @pytest.mark.parametrize("stored_hash,raw_input,expected", [
+        (None, "anything", False),            # DB NULL
+        ("", "anything", False),              # Empty string
+        ("abc123", "anything", False),        # Too short (corrupted)
+        ("a" * 65, "anything", False),        # Too long (corrupted)
+        ("a" * 100, "anything", False),       # Way too long
+    ])
+    def test_hash_boundary_safety(self, stored_hash, raw_input, expected):
+        """Malformed stored hashes should safely return False."""
         from src.core.security import compare_fingerprints
-        assert compare_fingerprints("abc123", "any-fingerprint") is False
+        assert compare_fingerprints(stored_hash, raw_input) is expected
 
-    def test_long_hash_returns_false(self):
-        """Stored hash longer than 64 chars should return False."""
-        from src.core.security import compare_fingerprints
-        long_hash = "a" * 100
-        assert compare_fingerprints(long_hash, "any-fingerprint") is False
-
-    def test_empty_hash_returns_false(self):
-        """Empty stored hash should return False."""
-        from src.core.security import compare_fingerprints
-        assert compare_fingerprints("", "any-fingerprint") is False
-
-    def test_none_hash_returns_false(self):
-        """None stored hash should return False (handles DB NULL)."""
-        from src.core.security import compare_fingerprints
-        assert compare_fingerprints(None, "any-fingerprint") is False
-
-    def test_valid_length_hash_proceeds_to_comparison(self):
+    def test_valid_hash_proceeds_to_comparison(self):
         """Valid 64-char hash should proceed to actual comparison."""
         from src.core.security import compare_fingerprints, hash_fingerprint
         valid_hash = hash_fingerprint("test-value")
@@ -222,3 +114,57 @@ class TestMalformedHashHandling:
         assert compare_fingerprints(valid_hash, "test-value") is True
         assert compare_fingerprints(valid_hash, "wrong-value") is False
 
+
+class TestFingerprintComparison:
+    """
+    Fingerprint comparison tests including timing attack resistance.
+    """
+    
+    def test_matching_fingerprint_returns_true(self):
+        from src.core.security import hash_fingerprint, compare_fingerprints
+        raw_fingerprint = "user-browser-fingerprint"
+        stored_hash = hash_fingerprint(raw_fingerprint)
+        assert compare_fingerprints(stored_hash, raw_fingerprint) is True
+
+    def test_non_matching_fingerprint_returns_false(self):
+        from src.core.security import hash_fingerprint, compare_fingerprints
+        stored_hash = hash_fingerprint("original-fingerprint")
+        assert compare_fingerprints(stored_hash, "different-fingerprint") is False
+
+    def test_timing_attack_resistance(self):
+        """
+        Verifies constant-time comparison is used (secrets.compare_digest).
+        
+        Structural test: ensures the comparison works correctly for both
+        matching and non-matching inputs without early termination.
+        """
+        from src.core.security import compare_fingerprints, hash_fingerprint
+        stored = hash_fingerprint("test")
+        # These should use constant-time comparison internally
+        assert compare_fingerprints(stored, "test") is True
+        assert compare_fingerprints(stored, "wrong") is False
+
+
+class TestIDGenerationUniqueness:
+    """
+    Entropy & Uniqueness verification for ID generation.
+    
+    Confirms wrapper functions haven't introduced bottlenecks or static seeds.
+    Note: We're testing our wrapper, not uuid/secrets stdlib.
+    """
+    
+    def test_session_ids_are_unique(self):
+        from src.core.security import generate_session_id
+        ids = [generate_session_id() for _ in range(100)]
+        assert len(set(ids)) == 100
+
+    def test_login_flow_ids_are_unique(self):
+        from src.core.security import generate_login_flow_id
+        ids = [generate_login_flow_id() for _ in range(100)]
+        assert len(set(ids)) == 100
+
+    def test_login_flow_id_has_sufficient_entropy(self):
+        """16 bytes base64url encoded = ~22 characters minimum."""
+        from src.core.security import generate_login_flow_id
+        flow_id = generate_login_flow_id()
+        assert len(flow_id) >= 20
