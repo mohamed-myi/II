@@ -1,0 +1,36 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "gim-workers"
+version = "0.1.0"
+description = "Data ingestion and maintenance workers for IssueIndex"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    # GraphQL Client
+    "gql[all]>=3.5.0",
+    
+    # Data Processing
+    "pandas>=2.2.3",
+    
+    # Note: Install internal deps first with:
+    # pip install -e ../../packages/database -e ../../packages/shared
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3.4",
+    "pytest-asyncio>=0.24.0",
+]
+redis = [
+    # Optional: for rate limiting
+    "redis>=5.2.1",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
+
+[tool.hatch.metadata]
+allow-direct-references = true

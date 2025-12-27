@@ -1,0 +1,47 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "gim-backend"
+version = "0.1.0"
+description = "FastAPI backend with ML service for IssueIndex"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    # FastAPI & Server
+    "fastapi>=0.115.6",
+    "uvicorn[standard]>=0.34.0",
+    
+    # ML & Embeddings
+    "sentence-transformers>=3.3.1",
+    "numpy>=2.2.1",
+    
+    # Auth & Security
+    "python-jose[cryptography]>=3.3.0",
+    
+    # HTTP Client
+    "httpx>=0.28.1",
+    
+    # Configuration
+    "pydantic-settings>=2.7.0",
+    
+    # Note: Install gim-database first with: pip install -e ../../packages/database
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3.4",
+    "pytest-asyncio>=0.24.0",
+    "httpx>=0.28.1",
+]
+cpu = [
+    # CPU-only PyTorch for memory efficiency
+    "torch>=2.5.1",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
+
+[tool.hatch.metadata]
+allow-direct-references = true
