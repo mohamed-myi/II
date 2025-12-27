@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     environment: str = "development"
     cors_origins: str = "http://localhost:3000"
     
+    session_remember_me_days: int = 7
+    session_default_hours: int = 24
+    
     model_config = SettingsConfigDict(
         env_file=".env.local",
         env_file_encoding="utf-8",
@@ -28,3 +31,4 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
+
