@@ -35,7 +35,7 @@ class RiskResult:
 
 def _safe_compare(session_value: str | None, request_value: str | None) -> bool:
     """
-    Returns True if values mismatch; None values on either side are NOT considered mismatches
+    Returns True if values mismatch; None values on either side aren't considered mismatches
     since missing data should not trigger risk
     """
     if session_value is None or request_value is None:
