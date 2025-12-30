@@ -10,7 +10,6 @@ from datetime import datetime, timezone
 from uuid import uuid4
 from io import StringIO
 
-import pytest
 
 from src.core.audit import log_audit_event, AuditEvent
 

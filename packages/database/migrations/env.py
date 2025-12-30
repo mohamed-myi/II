@@ -19,10 +19,6 @@ project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..
 load_dotenv(os.path.join(project_root, '.env.local'))
 load_dotenv(os.path.join(project_root, '.env'))
 
-from models.identity import User, Session
-from models.ingestion import Repository, Issue
-from models.profiles import UserProfile
-from models.persistence import BookmarkedIssue, PersonalNote
 
 config = context.config
 

@@ -33,7 +33,6 @@ from src.services.session_service import (
     create_session,
     link_provider,
     list_sessions,
-    count_sessions,
     invalidate_session,
     invalidate_all_sessions,
     get_session_by_id,

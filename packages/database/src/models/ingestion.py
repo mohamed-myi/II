@@ -36,6 +36,13 @@ class Issue(SQLModel, table=True):
     embedding: List[float] = Field(sa_column=Column(Vector(256))) 
     
     github_created_at: datetime
-    ingested_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    ingested_at: datetime = Field(
+        sa_column=sa.Column(
+            sa.DateTime(timezone=True),
+            server_default=sa.func.now(),
+            nullable=False,
+            index=True,
+        )
+    )
 
     repository: Repository = Relationship(back_populates="issues")

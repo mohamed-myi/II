@@ -4,7 +4,6 @@ Rate Limiting Integration Tests
 Tests the rate limiting behavior through the full HTTP request cycle.
 """
 import pytest
-from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
@@ -12,7 +11,6 @@ from src.main import app
 from src.middleware.rate_limit import (
     reset_rate_limiter,
     reset_rate_limiter_instance,
-    InMemoryRateLimiter,
 )
 
 
@@ -77,30 +75,28 @@ class TestRateLimitIntegration:
         """Different login flow IDs should have separate rate limits."""
         reset_rate_limiter()
         
-        with TestClient(app) as client:
+        with TestClient(app, cookies={"login_flow_id": "flow_a"}) as client_a:
             # Exhaust limit for flow_a
             for _ in range(10):
-                client.get(
+                client_a.get(
                     "/auth/login/github",
                     headers={"X-Device-Fingerprint": "test_fp"},
-                    cookies={"login_flow_id": "flow_a"},
                     follow_redirects=False,
                 )
             
             # flow_a should be blocked
-            response_a = client.get(
+            response_a = client_a.get(
                 "/auth/login/github",
                 headers={"X-Device-Fingerprint": "test_fp"},
-                cookies={"login_flow_id": "flow_a"},
                 follow_redirects=False,
             )
             assert response_a.status_code == 429
             
-            # flow_b should still be allowed since compound key differs
-            response_b = client.get(
+        # flow_b should still be allowed since compound key differs
+        with TestClient(app, cookies={"login_flow_id": "flow_b"}) as client_b:
+            response_b = client_b.get(
                 "/auth/login/github",
                 headers={"X-Device-Fingerprint": "test_fp"},
-                cookies={"login_flow_id": "flow_b"},
                 follow_redirects=False,
             )
             assert response_b.status_code in [302, 307]

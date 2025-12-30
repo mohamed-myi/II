@@ -1,13 +1,11 @@
 import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
-from urllib.parse import urlparse, parse_qs
+from unittest.mock import patch, MagicMock
 
 from fastapi.testclient import TestClient
-from httpx import AsyncClient
 
 from src.main import app
 from src.api.routes.auth import STATE_COOKIE_NAME
-from src.core.oauth import OAuthProvider, UserProfile, OAuthToken
+from src.core.oauth import UserProfile, OAuthToken
 from src.middleware.rate_limit import reset_rate_limiter, reset_rate_limiter_instance
 
 
@@ -227,13 +225,13 @@ class TestCallbackSuccessFlow:
         
         assert "session_id" in response.cookies
         
-        # SECURITY: Verify session_id is a valid UUID format (not empty/malformed)
+        # Verify session_id is a valid UUID format (not empty/malformed)
         from uuid import UUID
         session_value = response.cookies.get("session_id")
         UUID(session_value)  # Raises ValueError if invalid
     
     def test_callback_success_clears_state_cookie(self, client, mock_oauth_flow):
-        """SECURITY: State cookie must be cleared to prevent replay attacks."""
+        """State cookie must be cleared to prevent replay attacks."""
         state = "validstate123456789012345678901234"
         client.cookies.set(STATE_COOKIE_NAME, f"{state}:0")
         

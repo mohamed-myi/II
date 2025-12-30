@@ -1,5 +1,4 @@
 import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
@@ -65,4 +64,3 @@ class TestSessionEndpointRouting:
         assert response.status_code == 405
 
 
-    # NOTE: test_revoke_session_rejects_get removed - auth middleware responds before routing

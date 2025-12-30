@@ -10,7 +10,6 @@ Focus areas:
 - Max-Age / Expires consistency
 - Login flow cookie TTL
 """
-import pytest
 import os
 from datetime import datetime, timezone, timedelta
 from unittest.mock import patch
@@ -21,10 +20,8 @@ from src.core.cookies import (
     create_session_cookie,
     clear_session_cookie,
     create_login_flow_cookie,
-    clear_login_flow_cookie,
     SESSION_COOKIE_NAME,
     LOGIN_FLOW_COOKIE_NAME,
-    LOGIN_FLOW_COOKIE_MAX_AGE,
 )
 
 

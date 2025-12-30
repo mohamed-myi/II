@@ -11,7 +11,6 @@ import pytest
 
 from src.middleware.rate_limit import (
     InMemoryRateLimiter,
-    _build_compound_key,
     reset_rate_limiter,
 )
 

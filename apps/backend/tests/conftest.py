@@ -1,5 +1,4 @@
 import os
-import pytest
 
 # Set test environment variables before importing app modules
 # These are test values only, not real secrets
