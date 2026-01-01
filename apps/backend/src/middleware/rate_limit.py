@@ -1,6 +1,6 @@
 """
-Uses sliding window algorithm with atomic Redis operations for production,
-falling back to in-memory storage when Redis is unavailable (development only).
+Sliding window rate limiter; uses Redis in production;
+falls back to in memory storage when Redis unavailable
 """
 import logging
 import time
@@ -17,8 +17,6 @@ logger = logging.getLogger(__name__)
 
 
 class RateLimiterBackend(ABC):
-    """Abstract base for rate limiter storage backends."""
-    
     @abstractmethod
     async def is_rate_limited(
         self,
@@ -26,23 +24,16 @@ class RateLimiterBackend(ABC):
         max_requests: int,
         window_seconds: int,
     ) -> tuple[bool, int | None]:
-        """
-        Check if key is rate limited and record the request.
-        Returns (is_limited, retry_after_seconds).
-        """
+        """Returns tuple of is_limited and retry_after_seconds"""
         pass
     
     @abstractmethod
     async def clear(self, key: str | None = None) -> None:
-        """Clear rate limit data. If key is None, clear all."""
         pass
 
 
 class RedisRateLimiter(RateLimiterBackend):
-    """
-    Redis-backed rate limiter using INCR + EXPIRE pattern.
-    Atomic operations prevent race conditions across multiple instances.
-    """
+    """Uses INCR + EXPIRE pattern; atomic operations prevent race conditions"""
     
     def __init__(self, redis_client):
         self._redis = redis_client
@@ -55,15 +46,12 @@ class RedisRateLimiter(RateLimiterBackend):
     ) -> tuple[bool, int | None]:
         redis_key = f"rate_limit:{key}"
         
-        # Atomic increment
         count = await self._redis.incr(redis_key)
         
-        # Set expiry on first request in window
         if count == 1:
             await self._redis.expire(redis_key, window_seconds)
         
         if count > max_requests:
-            # Get TTL for retry-after header
             ttl = await self._redis.ttl(redis_key)
             retry_after = max(1, ttl) if ttl > 0 else 1
             return True, retry_after
@@ -74,17 +62,13 @@ class RedisRateLimiter(RateLimiterBackend):
         if key:
             await self._redis.delete(f"rate_limit:{key}")
         else:
-            # Clear all rate limit keys
             async for k in self._redis.scan_iter("rate_limit:*"):
                 await self._redis.delete(k)
 
 
 @dataclass
 class InMemoryRateLimiter(RateLimiterBackend):
-    """
-    In-memory rate limiter for development only.
-    State is lost on restart and not shared across instances.
-    """
+    """Development only; state lost on restart and not shared across instances"""
     storage: dict[str, list[float]] = field(default_factory=dict)
     
     def _prune_expired(self, timestamps: list[float], now: float, window: int) -> list[float]:
@@ -127,17 +111,13 @@ _limiter_initialized: bool = False
 
 
 async def get_rate_limiter() -> RateLimiterBackend:
-    """
-    Returns rate limiter backend.
-    Tries Redis first, falls back to in-memory if unavailable.
-    """
+    """Tries Redis first; falls back to in memory if unavailable"""
     global _rate_limiter, _limiter_initialized
     
     if _rate_limiter is not None:
         return _rate_limiter
     
     if _limiter_initialized:
-        # Already tried to initialize, use fallback
         _rate_limiter = InMemoryRateLimiter()
         return _rate_limiter
     
@@ -157,21 +137,20 @@ async def get_rate_limiter() -> RateLimiterBackend:
 
 
 def reset_rate_limiter() -> None:
-    """Reset rate limiter state. For testing only."""
+    """For testing only"""
     global _rate_limiter, _limiter_initialized
     if _rate_limiter and isinstance(_rate_limiter, InMemoryRateLimiter):
         _rate_limiter.storage.clear()
 
 
 def reset_rate_limiter_instance() -> None:
-    """Reset rate limiter instance entirely. For testing only."""
+    """For testing only"""
     global _rate_limiter, _limiter_initialized
     _rate_limiter = None
     _limiter_initialized = False
 
 
 def _build_compound_key(ip_address: str, flow_id: str | None) -> str:
-    """Build rate limit key from IP and optional flow ID."""
     if flow_id:
         return f"{ip_address}:{flow_id}"
     return ip_address
@@ -181,11 +160,7 @@ async def check_auth_rate_limit(
     request: Request,
     ctx: RequestContext = Depends(get_request_context),
 ) -> None:
-    """
-    FastAPI dependency for rate limiting auth endpoints.
-    Raises 429 if rate limit exceeded.
-    Uses compound key of IP + login_flow_id for NAT differentiation.
-    """
+    """Raises 429 if rate limit exceeded; uses compound key of IP + login_flow_id for NAT differentiation"""
     settings = get_settings()
     limiter = await get_rate_limiter()
     

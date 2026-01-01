@@ -1,6 +1,4 @@
-"""
-Provides async Redis client with automatic fallback to in-memory storage during development if Redis is not configured.
-"""
+"""Async Redis client; falls back to in memory storage if Redis not configured"""
 import logging
 from typing import Optional
 
@@ -13,10 +11,7 @@ _redis_available: Optional[bool] = None
 
 
 async def get_redis():
-    """
-    Returns async Redis client or None if not configured.
-    Lazy initialization with connection pooling.
-    """
+    """Lazy initialization with connection pooling; returns None if unavailable"""
     global _redis_client, _redis_available
     
     if _redis_available is False:
@@ -29,8 +24,7 @@ async def get_redis():
     
     if not settings.redis_url:
         logger.warning(
-            "REDIS_URL not configured; rate limiting will use in-memory storage. "
-            "Ignored during development only."
+            "REDIS_URL not configured; rate limiting will use in memory storage"
         )
         _redis_available = False
         return None
@@ -53,8 +47,7 @@ async def get_redis():
         
     except ImportError:
         logger.warning(
-            "redis package not installed; rate limiting will use in-memory storage. "
-            "Install with: pip install redis"
+            "redis package not installed; rate limiting will use in memory storage"
         )
         _redis_available = False
         return None
@@ -66,7 +59,7 @@ async def get_redis():
 
 
 async def close_redis() -> None:
-    """Closes Redis connection pool. Called on app shutdown."""
+    """Called on app shutdown"""
     global _redis_client, _redis_available
     
     if _redis_client is not None:
@@ -77,7 +70,7 @@ async def close_redis() -> None:
 
 
 def reset_redis_for_testing() -> None:
-    """Resets Redis state for testing purposes only."""
+    """For testing only"""
     global _redis_client, _redis_available
     _redis_client = None
     _redis_available = None

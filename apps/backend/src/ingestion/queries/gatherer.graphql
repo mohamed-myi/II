@@ -1,0 +1,28 @@
+query GathererIssues($owner: String!, $name: String!, $first: Int!, $after: String) {
+  repository(owner: $owner, name: $name) {
+    issues(states: OPEN, first: $first, after: $after, orderBy: {field: CREATED_AT, direction: DESC}) {
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
+      nodes {
+        id
+        title
+        bodyText
+        createdAt
+        labels(first: 10) {
+          nodes {
+            name
+          }
+        }
+      }
+    }
+  }
+  rateLimit {
+    cost
+    remaining
+    resetAt
+    nodeCount
+  }
+}
+

@@ -1,8 +1,4 @@
-"""
-
-Security events are logged as JSON-formatted and written to stdout for automatic ingestion
-by GCP Cloud Logging.
-"""
+"""Security events logged as JSON to stdout for GCP Cloud Logging ingestion"""
 import json
 import logging
 from datetime import datetime, timezone
@@ -14,7 +10,6 @@ logger = logging.getLogger("audit")
 
 
 class AuditEvent(str, Enum):
-    """Security-relevant events that must be logged."""
     LOGIN_SUCCESS = "login_success"
     LOGIN_FAILED = "login_failed"
     LOGOUT = "logout"
@@ -37,19 +32,7 @@ def log_audit_event(
     provider: Optional[str] = None,
     metadata: Optional[dict] = None,
 ) -> None:
-    """
-    Emits structured JSON log entry to stdout.
-    GCP Cloud Logging automatically ingests stdout from Cloud Run.
-    
-    Args:
-        event: The security event type
-        user_id: User ID if known
-        session_id: Session ID if applicable
-        ip_address: Client IP address
-        user_agent: Browser/client user agent (truncated to 256 chars)
-        provider: OAuth provider (github/google) if applicable
-        metadata: Additional context-specific data
-    """
+    """Truncates user_agent to 256 chars"""
     entry = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "event": event.value,
@@ -63,7 +46,6 @@ def log_audit_event(
     if metadata:
         entry.update(metadata)
     
-    # Filter None values for cleaner logs
     entry = {k: v for k, v in entry.items() if v is not None}
     
     logger.info(json.dumps(entry))

@@ -1,0 +1,37 @@
+query ScoutRepositories($searchQuery: String!, $first: Int!, $after: String) {
+  search(query: $searchQuery, type: REPOSITORY, first: $first, after: $after) {
+    repositoryCount
+    pageInfo {
+      hasNextPage
+      endCursor
+    }
+    nodes {
+      ... on Repository {
+        id
+        nameWithOwner
+        primaryLanguage {
+          name
+        }
+        stargazerCount
+        issues(states: OPEN) {
+          totalCount
+        }
+        repositoryTopics(first: 10) {
+          nodes {
+            topic {
+              name
+            }
+          }
+        }
+        pushedAt
+      }
+    }
+  }
+  rateLimit {
+    cost
+    remaining
+    resetAt
+    nodeCount
+  }
+}
+
