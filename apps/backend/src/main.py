@@ -31,6 +31,7 @@ async def lifespan(app: FastAPI):
     yield
     await close_http_client()
     await close_redis()
+    await close_embedder()
 
 
 app = FastAPI(
@@ -49,7 +50,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Session middleware after CORS; middleware executes in reverse order for responses
+# Middleware executes in reverse order for responses
 app.middleware("http")(session_cookie_sync_middleware)
 
 
@@ -58,6 +59,7 @@ async def health_check():
     return {"status": "ok"}
 
 
-from src.api.routes import auth
+from src.api.routes import auth, search
 
 app.include_router(auth.router, prefix="/auth", tags=["auth"])
+app.include_router(search.router, prefix="/search", tags=["search"])

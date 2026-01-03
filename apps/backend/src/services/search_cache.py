@@ -5,7 +5,6 @@ Time to Live: 5 min
 
 import json
 import logging
-from dataclasses import asdict
 from datetime import datetime
 from typing import Optional
 from uuid import UUID

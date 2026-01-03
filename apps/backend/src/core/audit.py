@@ -21,6 +21,8 @@ class AuditEvent(str, Enum):
     SESSION_KILLED = "session_killed"
     ACCOUNT_LINKED = "account_linked"
     RATE_LIMITED = "rate_limited"
+    SEARCH = "search"
+    SEARCH_INTERACTION = "search_interaction"
 
 
 def log_audit_event(
