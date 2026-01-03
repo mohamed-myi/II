@@ -91,14 +91,17 @@ def postgres_container():
 @pytest.fixture(scope="module")
 def sync_connection_url(postgres_container):
     """Synchronous connection URL for schema setup"""
-    return postgres_container.get_connection_url()
+    url = postgres_container.get_connection_url()
+    # Strip SQLAlchemy dialect prefix for plain PostgreSQL URL
+    return url.replace("postgresql+psycopg2://", "postgresql://")
 
 
 @pytest.fixture(scope="module")
 def async_connection_url(postgres_container):
     """Async connection URL for test sessions"""
     url = postgres_container.get_connection_url()
-    # Convert postgresql:// to postgresql+asyncpg://
+    # Strip SQLAlchemy dialect and convert to asyncpg
+    url = url.replace("postgresql+psycopg2://", "postgresql://")
     return url.replace("postgresql://", "postgresql+asyncpg://")
 
 

@@ -1,17 +1,8 @@
 """Unit tests for streaming persistence layer"""
 
-import sys
 import pytest
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
-
-# Mock sqlalchemy and sqlmodel before importing persistence
-sys.modules["sqlalchemy"] = MagicMock()
-sys.modules["sqlalchemy.text"] = MagicMock()
-sys.modules["sqlmodel"] = MagicMock()
-sys.modules["sqlmodel.ext"] = MagicMock()
-sys.modules["sqlmodel.ext.asyncio"] = MagicMock()
-sys.modules["sqlmodel.ext.asyncio.session"] = MagicMock()
+from unittest.mock import AsyncMock, MagicMock
 
 from src.ingestion.embeddings import EmbeddedIssue
 from src.ingestion.gatherer import IssueData
@@ -29,7 +20,19 @@ def mock_session():
 
 
 @pytest.fixture
-def persistence(mock_session):
+def persistence(mock_session, monkeypatch):
+    """Create StreamingPersistence with mocked dependencies."""
+    # Mock sqlalchemy and sqlmodel before importing
+    mock_sqlalchemy = MagicMock()
+    mock_sqlalchemy.text = MagicMock()
+    
+    monkeypatch.setitem(__import__('sys').modules, "sqlalchemy", mock_sqlalchemy)
+    monkeypatch.setitem(__import__('sys').modules, "sqlalchemy.text", MagicMock())
+    monkeypatch.setitem(__import__('sys').modules, "sqlmodel", MagicMock())
+    monkeypatch.setitem(__import__('sys').modules, "sqlmodel.ext", MagicMock())
+    monkeypatch.setitem(__import__('sys').modules, "sqlmodel.ext.asyncio", MagicMock())
+    monkeypatch.setitem(__import__('sys').modules, "sqlmodel.ext.asyncio.session", MagicMock())
+    
     # Import here after mocks are set up
     from src.ingestion.persistence import StreamingPersistence
     return StreamingPersistence(session=mock_session)
@@ -80,9 +83,8 @@ def make_repository():
 
 
 class TestStreamingPersistence:
-    def test_batch_size_is_50(self):
-        from src.ingestion.persistence import StreamingPersistence
-        assert StreamingPersistence.BATCH_SIZE == 50
+    def test_batch_size_is_50(self, persistence):
+        assert persistence.BATCH_SIZE == 50
 
 
 class TestUpsertRepositories:
@@ -223,4 +225,3 @@ class TestEmbeddingStorage:
         # Should be string representation of list for ::vector cast
         assert isinstance(embedding_param, str)
         assert embedding_param.startswith("[")
-

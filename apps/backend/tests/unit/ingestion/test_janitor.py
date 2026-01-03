@@ -1,19 +1,13 @@
 """Unit tests for Janitor set-based pruning"""
 
-import sys
 import pytest
-from unittest.mock import AsyncMock, MagicMock, call
+from unittest.mock import AsyncMock, MagicMock
 
-# Mock sqlalchemy before importing janitor
-sys.modules["sqlalchemy"] = MagicMock()
-mock_text = MagicMock()
-sys.modules["sqlalchemy"].text = mock_text
-sys.modules["sqlmodel"] = MagicMock()
-sys.modules["sqlmodel.ext"] = MagicMock()
-sys.modules["sqlmodel.ext.asyncio"] = MagicMock()
-sys.modules["sqlmodel.ext.asyncio.session"] = MagicMock()
 
-from src.ingestion.janitor import Janitor
+@pytest.fixture
+def mock_text():
+    """Mock for sqlalchemy.text"""
+    return MagicMock()
 
 
 @pytest.fixture
@@ -25,13 +19,30 @@ def mock_session():
 
 
 @pytest.fixture
-def janitor(mock_session):
+def janitor(mock_session, monkeypatch):
+    """Create Janitor with mocked dependencies."""
+    # Mock sqlalchemy and sqlmodel before importing
+    mock_sqlalchemy = MagicMock()
+    mock_sqlalchemy.text = MagicMock()
+    mock_sqlmodel = MagicMock()
+    mock_sqlmodel_ext = MagicMock()
+    mock_sqlmodel_ext_asyncio = MagicMock()
+    mock_sqlmodel_ext_asyncio_session = MagicMock()
+    
+    monkeypatch.setitem(__import__('sys').modules, "sqlalchemy", mock_sqlalchemy)
+    monkeypatch.setitem(__import__('sys').modules, "sqlmodel", mock_sqlmodel)
+    monkeypatch.setitem(__import__('sys').modules, "sqlmodel.ext", mock_sqlmodel_ext)
+    monkeypatch.setitem(__import__('sys').modules, "sqlmodel.ext.asyncio", mock_sqlmodel_ext_asyncio)
+    monkeypatch.setitem(__import__('sys').modules, "sqlmodel.ext.asyncio.session", mock_sqlmodel_ext_asyncio_session)
+    
+    # Now import Janitor
+    from src.ingestion.janitor import Janitor
     return Janitor(session=mock_session)
 
 
 class TestJanitorConfig:
-    def test_prune_percentile_is_20_percent(self):
-        assert Janitor.PRUNE_PERCENTILE == 0.2
+    def test_prune_percentile_is_20_percent(self, janitor):
+        assert janitor.PRUNE_PERCENTILE == 0.2
 
 
 class TestGetTableStats:
@@ -199,8 +210,19 @@ class TestEdgeCases:
         assert result["deleted_count"] == 0
         assert result["remaining_count"] == 100
 
-    async def test_custom_percentile(self, mock_session):
+    async def test_custom_percentile(self, mock_session, monkeypatch):
         """Verify percentile can be customized via class attribute"""
+        # Mock sqlalchemy and sqlmodel before importing
+        mock_sqlalchemy = MagicMock()
+        mock_sqlalchemy.text = MagicMock()
+        
+        monkeypatch.setitem(__import__('sys').modules, "sqlalchemy", mock_sqlalchemy)
+        monkeypatch.setitem(__import__('sys').modules, "sqlmodel", MagicMock())
+        monkeypatch.setitem(__import__('sys').modules, "sqlmodel.ext", MagicMock())
+        monkeypatch.setitem(__import__('sys').modules, "sqlmodel.ext.asyncio", MagicMock())
+        monkeypatch.setitem(__import__('sys').modules, "sqlmodel.ext.asyncio.session", MagicMock())
+        
+        from src.ingestion.janitor import Janitor
         janitor = Janitor(session=mock_session)
         janitor.PRUNE_PERCENTILE = 0.3  # Custom 30%
 
@@ -213,4 +235,3 @@ class TestEdgeCases:
         call_args = mock_session.execute.call_args
         params = call_args[0][1]
         assert params.get("percentile") == 0.3
-
