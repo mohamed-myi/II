@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     
     jwt_secret_key: str = ""
     fingerprint_secret: str = ""
+    fernet_key: str = ""  # Token encryption key for linked_accounts
     
     github_client_id: str = ""
     github_client_secret: str = ""
