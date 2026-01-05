@@ -81,15 +81,7 @@ class LinkedAccount(SQLModel, table=True):
         {"schema": "public"},
     )
     
-    id: UUID = Field(
-        default_factory=uuid4,
-        primary_key=True,
-        sa_column=sa.Column(
-            sa.dialects.postgresql.UUID(),
-            server_default=sa.text("gen_random_uuid()"),
-            primary_key=True
-        )
-    )
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
     user_id: UUID = Field(foreign_key="public.users.id", index=True)
     provider: str = Field(max_length=50, index=True)
     provider_user_id: str = Field(max_length=255)
