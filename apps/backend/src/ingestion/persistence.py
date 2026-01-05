@@ -115,7 +115,7 @@ class StreamingPersistence:
             values_list.append(
                 f"(:node_id_{i}, :repo_id_{i}, :has_code_{i}, :has_template_headers_{i}, "
                 f":tech_stack_weight_{i}, :q_score_{i}, :survival_score_{i}, :title_{i}, "
-                f":body_text_{i}, :labels_{i}, :embedding_{i}::vector, :github_created_at_{i})"
+                f":body_text_{i}, :labels_{i}, CAST(:embedding_{i} AS vector), :github_created_at_{i})"
             )
 
             params[f"node_id_{i}"] = issue.node_id
