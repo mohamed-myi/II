@@ -1,4 +1,106 @@
-.env.local
+############################
+# Secrets and local env files
+############################
+
+# Ignore all dotenv files by default (local developer and deploy secrets).
+.env
+.env.*
+
+# Allow committed templates.
+!.env.example
+!.env.template
+
+# Common key and certificate formats that should not be committed.
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.csr
+id_rsa
+id_rsa.pub
+id_ed25519
+id_ed25519.pub
+
+# GCP local and service account artifacts (repo-local only).
+.gcloud/
+.config/gcloud/
+**/*service*account*.json
+**/*service-account*.json
+
+############################
+# Python
+############################
+
 __pycache__/
-*.pyc
+*.py[cod]
+*.pyd
+*.so
+
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+.hypothesis/
+
+.venv/
+venv/
+ENV/
+env/
+.python-version
+
+*.egg-info/
+.eggs/
+build/
+dist/
+
+############################
+# Node.js and Next.js
+############################
+
 node_modules/
+.next/
+out/
+.vercel/
+
+coverage/
+.nyc_output/
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+############################
+# IDE and OS
+############################
+
+.vscode/
+.idea/
+*.iml
+
+.DS_Store
+Thumbs.db
+
+############################
+# Local runtime artifacts
+############################
+
+*.log
+logs/
+tmp/
+temp/
+data/
+*.sqlite
+*.sqlite3
+*.db
+
+############################
+# Repo-specific
+############################
+
+alloydb-auth-proxy
+.cursor/
