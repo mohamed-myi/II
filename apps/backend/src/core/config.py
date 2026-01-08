@@ -26,11 +26,30 @@ class Settings(BaseSettings):
     frontend_base_url: str = "http://localhost:3000"
     
     redis_url: str = ""
+
+    reco_flush_secret: str = ""
+    reco_events_flush_batch_size: int = 1000
+
+    feed_freshness_half_life_days: float = 7.0
+    feed_freshness_weight: float = 0.25
+    feed_freshness_floor: float = 0.2
+    feed_debug_freshness: bool = False
+
+    search_freshness_half_life_days: float = 7.0
+    search_freshness_weight: float = 0.25
+    search_freshness_floor: float = 0.2
     
     max_auth_requests_per_minute: int = 10
     rate_limit_window_seconds: int = 60
     
     git_token: str = ""
+    
+    # Cloud Tasks config
+    gcp_project: str = ""
+    gcp_region: str = "us-central1"
+    cloud_tasks_queue: str = "profile-jobs"
+    embed_worker_url: str = ""
+    resume_worker_url: str = ""
     
     model_config = SettingsConfigDict(
         env_file=".env.local",
