@@ -370,8 +370,11 @@ class TestGenerateGitHubVector:
         
         mock_vector = [0.1] * 768
         
-        with patch("src.services.github_profile_service.embed_query", new_callable=AsyncMock) as mock_embed:
-            mock_embed.return_value = mock_vector
+        with patch(
+            "src.services.github_profile_service.generate_github_vector_with_retry",
+            new_callable=AsyncMock,
+        ) as mock_gen:
+            mock_gen.return_value = mock_vector
             
             result = await generate_github_vector(
                 languages=["Python", "Go"],
@@ -379,8 +382,8 @@ class TestGenerateGitHubVector:
                 descriptions=["A cool project"],
             )
             
-            mock_embed.assert_called_once()
-            call_text = mock_embed.call_args[0][0]
+            mock_gen.assert_called_once()
+            call_text = mock_gen.call_args[0][0]
             assert "Python" in call_text
             assert "web" in call_text
             assert "A cool project" in call_text
@@ -390,8 +393,11 @@ class TestGenerateGitHubVector:
     async def test_returns_none_on_embedding_failure(self):
         from src.services.github_profile_service import generate_github_vector
         
-        with patch("src.services.github_profile_service.embed_query", new_callable=AsyncMock) as mock_embed:
-            mock_embed.return_value = None
+        with patch(
+            "src.services.github_profile_service.generate_github_vector_with_retry",
+            new_callable=AsyncMock,
+        ) as mock_gen:
+            mock_gen.return_value = None
             
             result = await generate_github_vector(
                 languages=["Python"],
@@ -405,14 +411,17 @@ class TestGenerateGitHubVector:
     async def test_returns_none_for_empty_input(self):
         from src.services.github_profile_service import generate_github_vector
         
-        with patch("src.services.github_profile_service.embed_query", new_callable=AsyncMock) as mock_embed:
+        with patch(
+            "src.services.github_profile_service.generate_github_vector_with_retry",
+            new_callable=AsyncMock,
+        ) as mock_gen:
             result = await generate_github_vector(
                 languages=[],
                 topics=[],
                 descriptions=[],
             )
             
-            mock_embed.assert_not_called()
+            mock_gen.assert_not_called()
             assert result is None
 
 

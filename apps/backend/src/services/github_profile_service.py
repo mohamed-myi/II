@@ -1,6 +1,11 @@
 """
 Service for fetching and processing GitHub profile data for recommendations.
 Extracts languages, topics, and repo descriptions from starred and contributed repos.
+
+For async processing via Cloud Tasks:
+  - initiate_github_fetch() validates connection and enqueues task; returns immediately
+  - execute_github_fetch() does the actual fetching and embedding (called by worker)
+  - fetch_github_profile() is the synchronous version for testing or fallback
 """
 import logging
 from collections import Counter
@@ -25,6 +30,7 @@ from src.services.linked_account_service import (
 from src.services.profile_embedding_service import calculate_combined_vector
 from src.services.vector_generation import generate_github_vector_with_retry
 from src.services.onboarding_service import mark_onboarding_in_progress
+from src.services.cloud_tasks_service import enqueue_github_task
 
 logger = logging.getLogger(__name__)
 
@@ -349,14 +355,141 @@ async def generate_github_vector(
     return vector
 
 
+async def initiate_github_fetch(
+    db: AsyncSession,
+    user_id: UUID,
+    is_refresh: bool = False,
+) -> dict:
+    """
+    Validates GitHub connection and enqueues Cloud Task for async processing.
+    Returns immediately with job_id and status 'processing'.
+    """
+    profile = await _get_or_create_profile(db, user_id)
+    
+    if is_refresh and profile.github_fetched_at:
+        seconds_remaining = check_refresh_allowed(profile.github_fetched_at)
+        if seconds_remaining is not None:
+            raise RefreshRateLimitError(seconds_remaining)
+    
+    try:
+        await get_valid_access_token(db, user_id, "github")
+    except LinkedAccountNotFoundError:
+        raise GitHubNotConnectedError(
+            "No GitHub account connected. Please connect GitHub first at /auth/connect/github"
+        )
+    except LinkedAccountRevokedError:
+        raise GitHubNotConnectedError(
+            "Please reconnect your GitHub account"
+        )
+    
+    await mark_onboarding_in_progress(db, profile)
+    
+    profile.is_calculating = True
+    await db.commit()
+    
+    job_id = await enqueue_github_task(user_id)
+    
+    logger.info(f"GitHub fetch initiated for user {user_id}, job_id {job_id}")
+    
+    return {
+        "job_id": job_id,
+        "status": "processing",
+        "message": "GitHub profile fetch started. Processing in background.",
+    }
+
+
+async def execute_github_fetch(
+    db: AsyncSession,
+    user_id: UUID,
+) -> dict:
+    """
+    Executes full GitHub fetch and embedding. Called by worker.
+    Does not check refresh rate limit (already validated in initiate).
+    """
+    profile = await _get_or_create_profile(db, user_id)
+    
+    try:
+        access_token = await get_valid_access_token(db, user_id, "github")
+    except (LinkedAccountNotFoundError, LinkedAccountRevokedError) as e:
+        profile.is_calculating = False
+        await db.commit()
+        raise GitHubNotConnectedError(str(e))
+    
+    async with GitHubGraphQLClient(access_token) as client:
+        try:
+            username = await client.verify_authentication()
+        except GitHubAuthError:
+            profile.is_calculating = False
+            await db.commit()
+            raise GitHubNotConnectedError("Please reconnect your GitHub account")
+        
+        if not username:
+            profile.is_calculating = False
+            await db.commit()
+            raise GitHubNotConnectedError("Could not retrieve GitHub username")
+        
+        starred_count, starred_repos = await _fetch_starred_repos(client, username)
+        contributed_count, contributed_repos = await _fetch_contributed_repos(client, username)
+    
+    languages = extract_languages(starred_repos, contributed_repos)
+    topics = extract_topics(starred_repos, contributed_repos)
+    
+    descriptions = _extract_descriptions_from_repos(contributed_repos, max_count=3)
+    descriptions.extend(_extract_descriptions_from_repos(starred_repos, max_count=2))
+    
+    minimal_warning = check_minimal_data(starred_count, contributed_count)
+    
+    profile.github_username = username
+    profile.github_languages = languages[:20] if languages else []
+    profile.github_topics = topics[:30] if topics else []
+    profile.github_data = {
+        "starred_count": starred_count,
+        "contributed_count": contributed_count,
+        "starred_repos": [r.get("name") for r in starred_repos[:20] if r],
+        "contributed_repos": [r.get("name") for r in contributed_repos[:20] if r],
+    }
+    profile.github_fetched_at = datetime.now(timezone.utc)
+    await db.commit()
+    
+    try:
+        logger.info(f"Generating GitHub vector for user {user_id}")
+        github_vector = await generate_github_vector(languages, topics, descriptions)
+        profile.github_vector = github_vector
+        
+        combined = await calculate_combined_vector(
+            intent_vector=profile.intent_vector,
+            resume_vector=profile.resume_vector,
+            github_vector=github_vector,
+        )
+        profile.combined_vector = combined
+        logger.info(f"GitHub vector generated for user {user_id}")
+    finally:
+        profile.is_calculating = False
+    
+    await db.commit()
+    await db.refresh(profile)
+    
+    return {
+        "status": "ready",
+        "username": username,
+        "starred_count": starred_count,
+        "contributed_repos": contributed_count,
+        "languages": profile.github_languages or [],
+        "topics": profile.github_topics or [],
+        "vector_status": "ready" if profile.github_vector else None,
+        "fetched_at": profile.github_fetched_at.isoformat() if profile.github_fetched_at else None,
+        "minimal_data_warning": minimal_warning,
+    }
+
+
 async def fetch_github_profile(
     db: AsyncSession,
     user_id: UUID,
     is_refresh: bool = False,
 ) -> dict:
     """
-    Main orchestrator for GitHub profile fetching.
-    Returns dict with extracted data, vector status, and optional warning.
+    Synchronous version: Full GitHub fetch and embedding in one call.
+    Used for testing or as fallback when Cloud Tasks is unavailable.
     """
     profile = await _get_or_create_profile(db, user_id)
     
@@ -520,6 +653,8 @@ __all__ = [
     "check_minimal_data",
     "check_refresh_allowed",
     "generate_github_vector",
+    "initiate_github_fetch",
+    "execute_github_fetch",
     "fetch_github_profile",
     "get_github_data",
     "delete_github",
