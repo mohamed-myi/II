@@ -231,12 +231,27 @@ class TestStage1SQLBuilder:
         
         assert "r.full_name = ANY(:repos)" in sql
 
-    def test_sql_orders_by_rrf_then_qscore(self):
-        """Results should be ordered by RRF score DESC, then q_score DESC for tie-breaking."""
+    def test_sql_orders_by_final_score_then_qscore(self):
+        """Results should be ordered by final_score DESC, then q_score DESC for tie-breaking."""
         filters = SearchFilters()
         sql = _build_stage1_sql(filters, use_vector_path=True)
         
-        assert "ORDER BY rrf_score DESC, q_score DESC" in sql
+        assert "ORDER BY final_score DESC, q_score DESC" in sql
+
+    def test_sql_includes_freshness_formula(self):
+        filters = SearchFilters()
+        sql = _build_stage1_sql(filters, use_vector_path=True)
+        assert "GREATEST(fused.ingested_at, fused.github_created_at)" in sql
+        assert "POWER(" in sql
+
+
+class TestStage2StateEnforcement:
+    def test_stage2_filters_open_issues(self):
+        from src.services import search_service
+        import inspect
+
+        src = inspect.getsource(search_service._execute_stage2)
+        assert "i.state = 'open'" in src
 
     def test_sql_uses_full_outer_join(self):
         """Vector and BM25 results should be combined with FULL OUTER JOIN."""

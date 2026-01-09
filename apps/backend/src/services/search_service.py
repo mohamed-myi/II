@@ -29,6 +29,7 @@ from sqlalchemy import text
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from src.services.embedding_service import embed_query
+from src.core.config import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -253,6 +254,7 @@ async def _execute_stage1(
     Filters are applied AFTER RRF fusion to prevent recall gaps.
     """
     sql = _build_stage1_sql(filters, use_vector_path)
+    settings = get_settings()
     
     params = {
         "query_text": query_text,
@@ -260,6 +262,9 @@ async def _execute_stage1(
         "labels": filters.labels or None,
         "repos": filters.repos or None,
         "candidate_limit": CANDIDATE_LIMIT,
+        "freshness_half_life_days": float(settings.search_freshness_half_life_days) if settings.search_freshness_half_life_days > 0 else 0.0001,
+        "freshness_floor": float(settings.search_freshness_floor),
+        "freshness_weight": float(settings.search_freshness_weight),
     }
     
     if use_vector_path and query_embedding:
@@ -308,7 +313,7 @@ async def _execute_stage2(
         r.primary_language
     FROM ingestion.issue i
     JOIN ingestion.repository r ON i.repo_id = r.node_id
-    WHERE i.node_id = ANY(:ids)
+    WHERE i.node_id = ANY(:ids) AND i.state = 'open'
     ORDER BY array_position(:ids, i.node_id)
     """
     
@@ -366,6 +371,8 @@ def _build_stage1_sql(filters: SearchFilters, use_vector_path: bool) -> str:
                 i.labels,
                 i.repo_id,
                 i.q_score,
+                i.github_created_at,
+                i.ingested_at,
                 ROW_NUMBER() OVER (ORDER BY i.embedding <=> CAST(:query_vec AS vector)) AS v_rank
             FROM ingestion.issue i
             WHERE i.embedding IS NOT NULL AND i.state = 'open'
@@ -378,6 +385,8 @@ def _build_stage1_sql(filters: SearchFilters, use_vector_path: bool) -> str:
                 i.labels,
                 i.repo_id,
                 i.q_score,
+                i.github_created_at,
+                i.ingested_at,
                 ROW_NUMBER() OVER (
                     ORDER BY ts_rank(i.search_vector, plainto_tsquery('english', :query_text)) DESC
                 ) AS b_rank
@@ -392,6 +401,8 @@ def _build_stage1_sql(filters: SearchFilters, use_vector_path: bool) -> str:
                 COALESCE(v.labels, b.labels) AS labels,
                 COALESCE(v.repo_id, b.repo_id) AS repo_id,
                 COALESCE(v.q_score, b.q_score) AS q_score,
+                COALESCE(v.github_created_at, b.github_created_at) AS github_created_at,
+                COALESCE(v.ingested_at, b.ingested_at) AS ingested_at,
                 COALESCE(1.0 / ({RRF_K} + v.v_rank), 0) + 
                 COALESCE(1.0 / ({RRF_K} + b.b_rank), 0) AS rrf_score
             FROM vector_results v
@@ -401,7 +412,28 @@ def _build_stage1_sql(filters: SearchFilters, use_vector_path: bool) -> str:
             SELECT 
                 fused.node_id,
                 fused.rrf_score,
-                fused.q_score
+                fused.q_score,
+                GREATEST(
+                    :freshness_floor,
+                    POWER(
+                        0.5,
+                        (
+                            EXTRACT(EPOCH FROM (NOW() - GREATEST(fused.ingested_at, fused.github_created_at))) / 86400.0
+                        ) / NULLIF(:freshness_half_life_days, 0)
+                    )
+                ) AS freshness,
+                (
+                    fused.rrf_score +
+                    (:freshness_weight * GREATEST(
+                        :freshness_floor,
+                        POWER(
+                            0.5,
+                            (
+                                EXTRACT(EPOCH FROM (NOW() - GREATEST(fused.ingested_at, fused.github_created_at))) / 86400.0
+                            ) / NULLIF(:freshness_half_life_days, 0)
+                        )
+                    ))
+                ) AS final_score
             FROM fused
             JOIN ingestion.repository r ON fused.repo_id = r.node_id
             {post_filter_where}
@@ -411,7 +443,7 @@ def _build_stage1_sql(filters: SearchFilters, use_vector_path: bool) -> str:
             rrf_score,
             COUNT(*) OVER() AS total_count
         FROM filtered
-        ORDER BY rrf_score DESC, q_score DESC, node_id ASC
+        ORDER BY final_score DESC, q_score DESC, node_id ASC
         """
     else:
         # BM25-only fallback (embedding failed)
@@ -422,6 +454,8 @@ def _build_stage1_sql(filters: SearchFilters, use_vector_path: bool) -> str:
                 i.labels,
                 i.repo_id,
                 i.q_score,
+                i.github_created_at,
+                i.ingested_at,
                 ROW_NUMBER() OVER (
                     ORDER BY ts_rank(i.search_vector, plainto_tsquery('english', :query_text)) DESC
                 ) AS b_rank
@@ -436,6 +470,8 @@ def _build_stage1_sql(filters: SearchFilters, use_vector_path: bool) -> str:
                 labels,
                 repo_id,
                 q_score,
+                github_created_at,
+                ingested_at,
                 1.0 / ({RRF_K} + b_rank) AS rrf_score
             FROM bm25_results
         ),
@@ -443,7 +479,28 @@ def _build_stage1_sql(filters: SearchFilters, use_vector_path: bool) -> str:
             SELECT 
                 fused.node_id,
                 fused.rrf_score,
-                fused.q_score
+                fused.q_score,
+                GREATEST(
+                    :freshness_floor,
+                    POWER(
+                        0.5,
+                        (
+                            EXTRACT(EPOCH FROM (NOW() - GREATEST(fused.ingested_at, fused.github_created_at))) / 86400.0
+                        ) / NULLIF(:freshness_half_life_days, 0)
+                    )
+                ) AS freshness,
+                (
+                    fused.rrf_score +
+                    (:freshness_weight * GREATEST(
+                        :freshness_floor,
+                        POWER(
+                            0.5,
+                            (
+                                EXTRACT(EPOCH FROM (NOW() - GREATEST(fused.ingested_at, fused.github_created_at))) / 86400.0
+                            ) / NULLIF(:freshness_half_life_days, 0)
+                        )
+                    ))
+                ) AS final_score
             FROM fused
             JOIN ingestion.repository r ON fused.repo_id = r.node_id
             {post_filter_where}
@@ -453,7 +510,7 @@ def _build_stage1_sql(filters: SearchFilters, use_vector_path: bool) -> str:
             rrf_score,
             COUNT(*) OVER() AS total_count
         FROM filtered
-        ORDER BY rrf_score DESC, q_score DESC, node_id ASC
+        ORDER BY final_score DESC, q_score DESC, node_id ASC
         """
     
     return sql
