@@ -114,6 +114,11 @@ class NoteNotFoundError(ProfileError):
     user_message = "Note not found"
 
 
+class IssueNotFoundError(ProfileError):
+    status_code = 404
+    user_message = "Issue not found"
+
+
 ERROR_MAP = {
     "UnsupportedFormatError": (400, "Please upload a PDF or DOCX file"),
     "FileTooLargeError": (413, "Resume must be under 5MB"),
@@ -133,6 +138,7 @@ ERROR_MAP = {
     "BookmarkNotFoundError": (404, "Bookmark not found"),
     "BookmarkAlreadyExistsError": (409, "You already bookmarked this issue"),
     "NoteNotFoundError": (404, "Note not found"),
+    "IssueNotFoundError": (404, "Issue not found"),
 }
 
 
@@ -195,6 +201,7 @@ __all__ = [
     "BookmarkNotFoundError",
     "BookmarkAlreadyExistsError",
     "NoteNotFoundError",
+    "IssueNotFoundError",
     "handle_profile_error",
     "profile_exception_handler",
     "ERROR_MAP",
