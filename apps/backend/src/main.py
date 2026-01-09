@@ -10,7 +10,6 @@ from src.core.errors import ProfileError, profile_exception_handler
 from src.middleware.auth import session_cookie_sync_middleware
 from src.api.dependencies import close_http_client
 from src.services.embedding_service import close_embedder
-from src.services.retry_queue import init_retry_queue, shutdown_retry_queue
 
 logging.basicConfig(
     level=logging.INFO,
@@ -28,9 +27,7 @@ settings = get_settings()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await init_retry_queue()
     yield
-    await shutdown_retry_queue()
     await close_http_client()
     await close_redis()
     await close_embedder()
@@ -70,11 +67,15 @@ from src.api.routes import (
     profile_resume,
     feed,
     bookmarks,
+    recommendations,
+    internal_recommendations,
 )
 
 app.include_router(auth.router, prefix="/auth", tags=["auth"])
 app.include_router(search.router, prefix="/search", tags=["search"])
 app.include_router(feed.router, prefix="/feed", tags=["feed"])
+app.include_router(recommendations.router, prefix="/recommendations", tags=["recommendations"])
+app.include_router(internal_recommendations.router, prefix="/internal", tags=["internal"])
 app.include_router(profile.router, prefix="/profile", tags=["profile"])
 app.include_router(profile_onboarding.router, prefix="/profile", tags=["profile"])
 app.include_router(profile_github.router, prefix="/profile", tags=["profile"])

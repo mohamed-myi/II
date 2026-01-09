@@ -6,6 +6,8 @@ from . import profile_onboarding
 from . import profile_github
 from . import profile_resume
 from . import bookmarks
+from . import recommendations
+from . import internal_recommendations
 
 __all__ = [
     "auth",
@@ -16,4 +18,6 @@ __all__ = [
     "profile_github",
     "profile_resume",
     "bookmarks",
+    "recommendations",
+    "internal_recommendations",
 ]
